@@ -1,7 +1,7 @@
 ---
 defaults:
   - _self_
-  - task: mnist
+  - task: mnist_dp
   - fed: mnist
   - strategy: fedavg
   - dataset: mnist

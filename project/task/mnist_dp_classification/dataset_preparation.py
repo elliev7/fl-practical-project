@@ -364,7 +364,7 @@ def _power_law_split(
 
 @hydra.main(
     config_path="../../conf",
-    config_name="mnist",
+    config_name="mnist_dp",
     version_base=None,
 )
 def download_and_preprocess(cfg: DictConfig) -> None:

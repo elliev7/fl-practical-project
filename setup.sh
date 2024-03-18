@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/usr/bin/bash
 
-VPOETRY_HOME=""
-VPYENV_ROOT=""
-VPYTHON_VERSION="3.11.6"
+VPOETRY_HOME="/home/elliev/.local/bin"
+VPYENV_ROOT="/home/elliev/.pyenv/bin"
+VPYTHON_VERSION="3.11"
 
 
 if ! [ -x "$(command -v pyenv)" ]; then

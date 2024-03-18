@@ -29,9 +29,9 @@ from project.task.default.dispatch import (
     dispatch_config as dispatch_default_config,
     init_working_dir as init_working_dir_default,
 )
-from project.task.mnist_classification.dataset import get_dataloader_generators
-from project.task.mnist_classification.models import get_logistic_regression, get_net
-from project.task.mnist_classification.train_test import get_fed_eval_fn, test, train
+from project.task.mnist_dp_classification.dataset import get_dataloader_generators
+from project.task.mnist_dp_classification.models import get_logistic_regression, get_net
+from project.task.mnist_dp_classification.train_test import get_fed_eval_fn, test, train
 from project.types.common import DataStructure, TrainStructure
 
 
@@ -69,7 +69,7 @@ def dispatch_train(
     )
 
     # Only consider not None and uppercase matches
-    if train_structure is not None and train_structure.upper() == "MNIST":
+    if train_structure is not None and train_structure.upper() == "MNIST_DP":
         return train, test, get_fed_eval_fn
 
     # Cannot match, send to next dispatch in chain
@@ -109,7 +109,7 @@ def dispatch_data(cfg: DictConfig, **kwargs: Any) -> DataStructure | None:
 
     # Select the partition dir
     # if it does not exist data cannot be loaded
-    # for MNIST and the dispatch should return None
+    # for MNIST_DP and the dispatch should return None
     partition_dir: str | None = cfg.get("dataset", {}).get(
         "partition_dir",
         None,
@@ -128,14 +128,14 @@ def dispatch_data(cfg: DictConfig, **kwargs: Any) -> DataStructure | None:
         )
 
         # Case insensitive matches
-        if client_model_and_data.upper() == "MNIST_CNN":
+        if client_model_and_data.upper() == "MNIST_DP_CNN":
             return (
                 get_net,
                 client_dataloader_gen,
                 fed_dataloader_gen,
                 init_working_dir_default,
             )
-        elif client_model_and_data.upper() == "MNIST_LR":
+        elif client_model_and_data.upper() == "MNIST_DP_LR":
             return (
                 get_logistic_regression,
                 client_dataloader_gen,

@@ -201,7 +201,7 @@ def test(
 
 
 # Use defaults as they are completely determined
-# by the other functions defined in mnist_classification
+# by the other functions defined in mnist_dp_classification
 get_fed_eval_fn = get_default_fed_eval_fn
 get_on_fit_config_fn = get_default_on_fit_config_fn
 get_on_evaluate_config_fn = get_default_on_evaluate_config_fn
