@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import cast
 
 import torch
+import numpy as np
 from pydantic import BaseModel
 from torch import nn
 from torch.utils.data import DataLoader
@@ -29,6 +30,7 @@ class TrainConfig(BaseModel):
     device: torch.device
     epochs: int
     learning_rate: float
+    epsilon: float
 
     class Config:
         """Setting to allow any types, including library ones like torch.device."""
@@ -88,14 +90,15 @@ def train(  # pylint: disable=too-many-arguments
 
     final_epoch_per_sample_loss = 0.0
     num_correct = 0
+
+    num_batches = len(trainloader)
     for _ in range(config.epochs):
         final_epoch_per_sample_loss = 0.0
         num_correct = 0
-        for data, target in trainloader:
+
+        for batch_idx, (data, target) in enumerate(trainloader):
             data, target = (
-                data.to(
-                    config.device,
-                ),
+                data.to(config.device),
                 target.to(config.device),
             )
             optimizer.zero_grad()
@@ -104,7 +107,19 @@ def train(  # pylint: disable=too-many-arguments
             final_epoch_per_sample_loss += loss.item()
             num_correct += (output.max(1)[1] == target).clone().detach().sum().item()
             loss.backward()
+
+            if (batch_idx + 1) % num_batches == 0:
+                for param in net.parameters():
+                    if param.requires_grad:
+                        noise = torch.tensor(
+                            np.random.laplace(
+                                0, 1 / config.epsilon, size=param.grad.shape
+                            )
+                        ).to(config.device)
+                        param.grad += noise
+
             optimizer.step()
+            optimizer.zero_grad()
 
     return len(cast(Sized, trainloader.dataset)), {
         "train_loss": final_epoch_per_sample_loss
