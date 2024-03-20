@@ -91,12 +91,17 @@ def train(  # pylint: disable=too-many-arguments
     final_epoch_per_sample_loss = 0.0
     num_correct = 0
 
+    grad_stats = []
+    aggr_grad_stats = []
+    final_grad_stats = []
     num_batches = len(trainloader)
+
     for _ in range(config.epochs):
         final_epoch_per_sample_loss = 0.0
         num_correct = 0
 
-        for batch_idx, (data, target) in enumerate(trainloader):
+        batch_counter = 0
+        for data, target in trainloader:
             data, target = (
                 data.to(config.device),
                 target.to(config.device),
@@ -108,7 +113,8 @@ def train(  # pylint: disable=too-many-arguments
             num_correct += (output.max(1)[1] == target).clone().detach().sum().item()
             loss.backward()
 
-            if (batch_idx + 1) % num_batches == 0:
+            if batch_counter < num_batches // 10:
+                grad_stats_batch = []
                 for param in net.parameters():
                     if param.requires_grad:
                         noise = torch.tensor(
@@ -118,8 +124,48 @@ def train(  # pylint: disable=too-many-arguments
                         ).to(config.device)
                         param.grad += noise
 
-            optimizer.step()
-            optimizer.zero_grad()
+                        # Compute statistics from gradients
+                        grad_mean = torch.mean(param.grad)
+                        grad_std = torch.std(param.grad)
+                        grad_stats_batch.append((grad_mean, grad_std))
+                grad_stats.append(grad_stats_batch)
+            batch_counter += 1
+
+            if batch_counter >= num_batches // 10:
+                if batch_counter == num_batches // 10:
+                    batches_len = len(grad_stats)
+                    params_len = len(grad_stats[0])
+
+                    for _ in range(params_len):
+                        aggr_grad_stats.append([0.0, 0.0])
+
+                    for batch in grad_stats:
+                        for i in range(params_len):
+                            aggr_grad_stats[i][0] += batch[i][0]
+                            aggr_grad_stats[i][1] += batch[i][1]
+
+                    for i in range(params_len):
+                        aggr_grad_stats[i][0] /= batches_len
+                        aggr_grad_stats[i][1] /= batches_len
+
+                    for i in range(params_len):
+                        final_grad_stats.append(tuple(aggr_grad_stats[i]))
+
+                for param_idx, param in enumerate(net.parameters()):
+                    if param.requires_grad and param_idx < len(final_grad_stats):
+                        # Apply preconditioning using gradient statistics
+                        mean, std = final_grad_stats[param_idx]
+                        param.grad -= mean  # Center the gradients
+                        if std != 0:
+                            param.grad /= std  # Scale gradients only if std is not zero
+                        noise = torch.tensor(
+                            np.random.laplace(
+                                0, 1 / config.epsilon, size=param.grad.shape
+                            )
+                        ).to(config.device)
+                        param.grad += noise
+                        optimizer.step()
+            batch_counter += 1
 
     return len(cast(Sized, trainloader.dataset)), {
         "train_loss": final_epoch_per_sample_loss
@@ -216,7 +262,7 @@ def test(
 
 
 # Use defaults as they are completely determined
-# by the other functions defined in mnist_dp_ada_classification
+# by the other functions defined in mnist_dp_classification
 get_fed_eval_fn = get_default_fed_eval_fn
 get_on_fit_config_fn = get_default_on_fit_config_fn
 get_on_evaluate_config_fn = get_default_on_evaluate_config_fn
