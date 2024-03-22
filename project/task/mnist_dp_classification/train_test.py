@@ -6,6 +6,7 @@ from typing import cast
 
 import torch
 import numpy as np
+import torch.nn.utils as nn_utils
 from pydantic import BaseModel
 from torch import nn
 from torch.utils.data import DataLoader
@@ -91,12 +92,11 @@ def train(  # pylint: disable=too-many-arguments
     final_epoch_per_sample_loss = 0.0
     num_correct = 0
 
-    num_batches = len(trainloader)
     for _ in range(config.epochs):
         final_epoch_per_sample_loss = 0.0
         num_correct = 0
 
-        for batch_idx, (data, target) in enumerate(trainloader):
+        for data, target in trainloader:
             data, target = (
                 data.to(config.device),
                 target.to(config.device),
@@ -108,15 +108,14 @@ def train(  # pylint: disable=too-many-arguments
             num_correct += (output.max(1)[1] == target).clone().detach().sum().item()
             loss.backward()
 
-            if (batch_idx + 1) % num_batches == 0:
-                for param in net.parameters():
-                    if param.requires_grad:
-                        noise = torch.tensor(
-                            np.random.laplace(
-                                0, 1 / config.epsilon, size=param.grad.shape
-                            )
-                        ).to(config.device)
-                        param.grad += noise
+            nn_utils.clip_grad_norm_(net.parameters(), max_norm=2.0)
+
+            for param in net.parameters():
+                if param.requires_grad:
+                    noise = torch.tensor(
+                        np.random.laplace(0, 1 / config.epsilon, size=param.grad.shape)
+                    ).to(config.device)
+                    param.grad += noise
 
             optimizer.step()
             optimizer.zero_grad()

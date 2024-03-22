@@ -6,6 +6,7 @@ from typing import cast
 
 import torch
 import numpy as np
+import torch.nn.utils as nn_utils
 from pydantic import BaseModel
 from torch import nn
 from torch.utils.data import DataLoader
@@ -90,18 +91,17 @@ def train(  # pylint: disable=too-many-arguments
 
     final_epoch_per_sample_loss = 0.0
     num_correct = 0
+    num_batches = len(trainloader)
 
     grad_stats = []
     aggr_grad_stats = []
     final_grad_stats = []
-    num_batches = len(trainloader)
 
     for _ in range(config.epochs):
         final_epoch_per_sample_loss = 0.0
         num_correct = 0
 
-        batch_counter = 0
-        for data, target in trainloader:
+        for batch_idx, (data, target) in enumerate(trainloader):
             data, target = (
                 data.to(config.device),
                 target.to(config.device),
@@ -113,26 +113,18 @@ def train(  # pylint: disable=too-many-arguments
             num_correct += (output.max(1)[1] == target).clone().detach().sum().item()
             loss.backward()
 
-            if batch_counter < num_batches // 10:
+            nn_utils.clip_grad_norm_(net.parameters(), max_norm=2.0)
+
+            if batch_idx < num_batches // 10:
                 grad_stats_batch = []
                 for param in net.parameters():
-                    if param.requires_grad:
-                        noise = torch.tensor(
-                            np.random.laplace(
-                                0, 1 / config.epsilon, size=param.grad.shape
-                            )
-                        ).to(config.device)
-                        param.grad += noise
-
-                        # Compute statistics from gradients
-                        grad_mean = torch.mean(param.grad)
-                        grad_std = torch.std(param.grad)
-                        grad_stats_batch.append((grad_mean, grad_std))
+                    grad_mean = torch.mean(param.grad)
+                    grad_std = torch.std(param.grad)
+                    grad_stats_batch.append((grad_mean, grad_std))
                 grad_stats.append(grad_stats_batch)
-            batch_counter += 1
 
-            if batch_counter >= num_batches // 10:
-                if batch_counter == num_batches // 10:
+            else:
+                if batch_idx == num_batches // 10:
                     batches_len = len(grad_stats)
                     params_len = len(grad_stats[0])
 
@@ -147,25 +139,22 @@ def train(  # pylint: disable=too-many-arguments
                     for i in range(params_len):
                         aggr_grad_stats[i][0] /= batches_len
                         aggr_grad_stats[i][1] /= batches_len
-
-                    for i in range(params_len):
                         final_grad_stats.append(tuple(aggr_grad_stats[i]))
 
                 for param_idx, param in enumerate(net.parameters()):
-                    if param.requires_grad and param_idx < len(final_grad_stats):
-                        # Apply preconditioning using gradient statistics
+                    if param.requires_grad:
                         mean, std = final_grad_stats[param_idx]
-                        param.grad -= mean  # Center the gradients
+                        param.grad -= mean  # center the gradients
                         if std != 0:
-                            param.grad /= std  # Scale gradients only if std is not zero
+                            param.grad /= std  # scale the gradients
                         noise = torch.tensor(
                             np.random.laplace(
                                 0, 1 / config.epsilon, size=param.grad.shape
                             )
                         ).to(config.device)
                         param.grad += noise
-                        optimizer.step()
-            batch_counter += 1
+
+            optimizer.step()
 
     return len(cast(Sized, trainloader.dataset)), {
         "train_loss": final_epoch_per_sample_loss
